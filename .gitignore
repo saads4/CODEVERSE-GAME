@@ -42,3 +42,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 __pycache__
+
+# private challenge answer key
+challenges/printing-press/data/answer_key.csv
+**/answer_key.csv
