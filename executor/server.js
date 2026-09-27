@@ -7,7 +7,7 @@ const { spawn } = require("node:child_process");
 const PORT = Number(process.env.PORT || 4000);
 const IMAGE = process.env.EXECUTOR_IMAGE || "executor-sandbox:local";
 const WORK_ROOT = process.env.WORK_ROOT || "/work";
-const TIMEOUT_MS = 5000;
+const TIMEOUT_MS = 15000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const LANGUAGES = new Set(["python", "c", "cpp", "javascript", "jsx", "tsx"]);
 
@@ -51,7 +51,7 @@ async function execute(language, source, stdin) {
   }
 
   const args = [
-    "run", "--rm", "--init", "-i", "--network", "none", "--cpus", "0.5", "--memory", "128m",
+    "run", "--rm", "--init", "-i", "--network", "none", "--cpus", "0.5", "--memory", "512m",
     "--pids-limit", "64", "--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,size=64m",
     "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--user", "1000:1000",
     "--mount", "type=volume,source=executor-work,destination=/workspace,readonly", IMAGE, "sh", "-lc",

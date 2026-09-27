@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { Project } from "@/lib/types";
 import { parseErrorBody } from "@/lib/http";
-import { IconFolder, IconTrash } from "@/components/icons";
+import { IconFolder, IconPlay, IconTrash } from "@/components/icons";
 import { useToast } from "@/components/ToastProvider";
 import { useDialog } from "@/components/DialogProvider";
 import { isFileSystemAccessSupported } from "@/lib/localFs";
@@ -143,14 +144,24 @@ export default function Home() {
           </button>
         </div>
 
-        <button
-          onClick={openLocalFolder}
-          title={localFsSupported ? undefined : "Needs Chrome or Edge"}
-          className="w-full flex items-center justify-center gap-2 border border-dashed border-(--border-hairline-strong) hover:border-(--accent) hover:text-(--accent) text-(--text-secondary) rounded-lg h-11 text-[13px] font-medium transition-colors mb-10"
-        >
-          <IconFolder className="w-4 h-4" />
-          Open a Local Folder
-        </button>
+        <div className="flex flex-col gap-2.5 mb-10">
+          <button
+            onClick={openLocalFolder}
+            title={localFsSupported ? undefined : "Needs Chrome or Edge"}
+            className="w-full flex items-center justify-center gap-2 border border-dashed border-(--border-hairline-strong) hover:border-(--accent) hover:text-(--accent) text-(--text-secondary) rounded-lg h-11 text-[13px] font-medium transition-colors"
+          >
+            <IconFolder className="w-4 h-4" />
+            Open a Local Folder
+          </button>
+
+          <Link
+            href="/printing-press"
+            className="w-full flex items-center justify-center gap-2 border border-dashed border-(--border-hairline-strong) hover:border-(--accent-run) hover:text-(--accent-run) text-(--text-secondary) rounded-lg h-11 text-[13px] font-medium transition-colors"
+          >
+            <IconPlay className="w-3.5 h-3.5 text-(--accent-run)" />
+            Printing Press ML
+          </Link>
+        </div>
 
         <h2 className="text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary) mb-3">
           Your Projects

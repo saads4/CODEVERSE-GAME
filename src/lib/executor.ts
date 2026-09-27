@@ -2,6 +2,8 @@ import type { Runner } from "@/lib/languageMap";
 
 const EXECUTOR_URL = process.env.EXECUTOR_URL || "http://localhost:4000";
 
+const REQUEST_TIMEOUT_MS = 20_000;
+
 export interface ExecuteResult {
   stdout: string;
   stderr: string;
@@ -17,16 +19,46 @@ export async function executeCode(
   sourceCode: string,
   stdin = ""
 ): Promise<ExecuteResult> {
-  const response = await fetch(`${EXECUTOR_URL}/execute`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ language, source: sourceCode, stdin }),
-    cache: "no-store",
-  });
+  const controller = new AbortController();
 
-  if (!response.ok) {
-    throw new Error(`Executor failed: ${response.status} ${await response.text()}`);
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${EXECUTOR_URL}/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        language,
+        source: sourceCode,
+        stdin,
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Executor failed: ${response.status} ${await response.text()}`
+      );
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        stdout: "",
+        stderr: "Execution request timed out.",
+        exitCode: 124,
+        status: "timeout",
+        time: null,
+        memory: null,
+      };
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return response.json();
 }

@@ -67,7 +67,12 @@ export default function OutputPanel({ running, result, stdin, onStdinChange }: O
             )}
             {result.stdout && <div className="text-neutral-200">{result.stdout}</div>}
             {result.stderr && <div className="text-red-400">{result.stderr}</div>}
-            {!result.stdout && !result.stderr && !result.compileStderr && (
+            {result.status === "timeout" && !result.stderr?.includes("timed out") && (
+              <div className="text-red-400">
+                Execution timed out after approximately {result.time ? `${Math.round(Number(result.time))} seconds.` : "15 seconds."}
+              </div>
+            )}
+            {!result.stdout && !result.stderr && !result.compileStderr && result.status !== "timeout" && (
               <div className="text-neutral-500 font-(family-name:--font-ui)">(no output)</div>
             )}
           </>
