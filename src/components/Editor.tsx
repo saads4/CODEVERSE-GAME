@@ -42,7 +42,7 @@ export default function Editor({ filename, value, onChange, onCursorChange }: Ed
     <div className="h-full bg-(--surface-editor)">
       <MonacoEditor
         value={value}
-        theme="dark"
+        theme="vs-dark"
         language={languageId ?? (extension === "jsx" ? "javascript" : extension)}
         onChange={(nextValue) => onChange(nextValue ?? "")}
         onMount={handleMount}
