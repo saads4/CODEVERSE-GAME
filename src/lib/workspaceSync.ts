@@ -1,7 +1,10 @@
 import { flattenTreeWithPaths } from "@/lib/previewFiles";
 import type { TreeNode, WorkspaceNode } from "@/lib/types";
 
-const EXECUTOR_URL = process.env.EXECUTOR_URL || "http://localhost:4000";
+const EXECUTOR_URL =
+  process.env.NEXT_PUBLIC_EXECUTOR_URL ||
+  process.env.EXECUTOR_URL ||
+  "http://localhost:4000";
 
 export async function syncWorkspaceFiles<T extends WorkspaceNode>(
   projectId: string,

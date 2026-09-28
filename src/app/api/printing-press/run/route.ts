@@ -3,7 +3,7 @@ import { executeCode } from "@/lib/executor";
 import fs from "fs";
 import path from "path";
 
-// ── Server-side answer key (NEVER exposed to contestant) ────────────────────
+// ── Server-side answer key (Private ground truth) ───────────────────────────
 const ANSWER_KEY_PATH = path.resolve(
   process.cwd(),
   "challenges/printing-press/data/answer_key.csv"
@@ -35,6 +35,24 @@ function calculatePoints(errPct: number): number {
   return 0;
 }
 
+export interface ValidationCheck {
+  id: string;
+  label: string;
+  passed: boolean;
+  message?: string;
+}
+
+export interface ValidationFeedback {
+  status: "passed" | "failed" | "error";
+  title: string;
+  message: string;
+  points?: number;
+  maxPoints?: number;
+  errorPct?: number;
+  hints: string[];
+  checks: ValidationCheck[];
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { content } = await req.json();
@@ -46,184 +64,334 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Code is too large" }, { status: 400 });
     }
 
-    // Load answer key on the server before execution
+    // 1. Load answer key for post-execution validation
     let answerKey: { id: string; amount_printed: number }[];
     try {
       answerKey = loadAnswerKey();
     } catch (e) {
       console.error("Failed to load answer_key.csv:", e);
-      return NextResponse.json({ error: "Challenge data unavailable" }, { status: 500 });
+      return NextResponse.json({ error: "Challenge answer key unavailable" }, { status: 500 });
     }
     const expectedCount = answerKey.length;
 
-    // ── Wrapped Python code sent to the executor ────────────────────────────
+    // 2. Wrap user code to execute cleanly without validation interfering in terminal
     const wrappedSource = `
 import sys
 import os
-import numpy as np
+import json
 
-# Configure matplotlib for headless environment before contestant code runs
+# Headless matplotlib configuration
 try:
     import matplotlib
     matplotlib.use("Agg")
 except Exception:
     pass
 
-# ============================================================
-# CONTESTANT CODE
-# ============================================================
+# Execute contestant code normally
+_pp_user_code = ${JSON.stringify(content)}
+_pp_runtime_error = None
 
 try:
-    exec(
-        compile(${JSON.stringify(content)}, "main.py", "exec"),
-        globals()
-    )
+    _pp_compiled = compile(_pp_user_code, "main.py", "exec")
+    exec(_pp_compiled, globals())
 except SystemExit:
     pass
+except Exception as _e:
+    import traceback
+    _pp_runtime_error = str(_e)
+    # Output natural Python traceback to stderr for genuine terminal reporting
+    sys.stderr.write(traceback.format_exc())
 
-# ============================================================
-# VISUALIZATION CAPTURE (Matplotlib / Seaborn)
-# ============================================================
-
+# Capture visualization if generated
 _pp_img_b64 = None
 try:
     import base64 as _pp_b64
-    import os as _pp_os
-    
-    # 1. Check for explicitly saved PNG files (e.g. visualization.png or any *.png)
-    _pp_pngs = [f for f in _pp_os.listdir(".") if f.endswith(".png")]
+    _pp_pngs = [f for f in os.listdir(".") if f.endswith(".png")]
     if _pp_pngs:
         _pp_target = "visualization.png" if "visualization.png" in _pp_pngs else _pp_pngs[0]
         with open(_pp_target, "rb") as _f:
             _pp_img_b64 = _pp_b64.b64encode(_f.read()).decode("ascii")
-    
-    # 2. Check for active unclosed matplotlib figure
-    if not _pp_img_b64:
-        if "matplotlib.pyplot" in sys.modules:
-            _plt = sys.modules["matplotlib.pyplot"]
-            if _plt.get_fignums():
-                import io as _pp_io
-                _buf = _pp_io.BytesIO()
-                _plt.savefig(_buf, format="png", dpi=120, bbox_inches="tight")
-                _buf.seek(0)
-                _pp_img_b64 = _pp_b64.b64encode(_buf.read()).decode("ascii")
-                _plt.close("all")
+    if not _pp_img_b64 and "matplotlib.pyplot" in sys.modules:
+        _plt = sys.modules["matplotlib.pyplot"]
+        if _plt.get_fignums():
+            import io as _pp_io
+            _buf = _pp_io.BytesIO()
+            _plt.savefig(_buf, format="png", dpi=120, bbox_inches="tight")
+            _buf.seek(0)
+            _pp_img_b64 = _pp_b64.b64encode(_buf.read()).decode("ascii")
+            _plt.close("all")
 except Exception:
     pass
 
+# Post-execution validation payload (independent inspection)
+_pp_val_payload = {
+    "has_runtime_error": _pp_runtime_error is not None,
+    "has_predictions_var": False,
+    "is_unassigned": False,
+    "is_numeric": False,
+    "count": 0,
+    "has_nan": False,
+    "has_inf": False,
+    "predictions": None,
+}
+
+if _pp_runtime_error is None:
+    if "predictions" in globals():
+        _pp_val_payload["has_predictions_var"] = True
+        _pp_raw = globals()["predictions"]
+        if _pp_raw is ... or _pp_raw is None:
+            _pp_val_payload["is_unassigned"] = True
+        else:
+            try:
+                import numpy as _pp_np
+                import pandas as _pp_pd
+                if isinstance(_pp_raw, (_pp_pd.Series, _pp_pd.DataFrame)):
+                    _pp_arr = _pp_raw.to_numpy()
+                else:
+                    _pp_arr = _pp_np.asarray(_pp_raw)
+
+                _pp_val_payload["count"] = int(_pp_arr.size)
+                if _pp_np.issubdtype(_pp_arr.dtype, _pp_np.number):
+                    _pp_val_payload["is_numeric"] = True
+                    _pp_flat = _pp_arr.astype(float).reshape(-1)
+                    _pp_val_payload["has_nan"] = bool(_pp_np.isnan(_pp_flat).any())
+                    _pp_val_payload["has_inf"] = bool(_pp_np.isinf(_pp_flat).any())
+                    if not _pp_val_payload["has_nan"] and not _pp_val_payload["has_inf"] and len(_pp_flat) == ${expectedCount}:
+                        _pp_val_payload["predictions"] = [round(float(v), 6) for v in _pp_flat]
+            except Exception:
+                pass
+
 if _pp_img_b64:
-    print("__PP_IMAGE__:" + _pp_img_b64)
-
-# ============================================================
-# PLATFORM VALIDATION
-# ============================================================
-
-if "predictions" not in globals():
-    sys.stderr.write("Validation Error: 'predictions' variable is not defined.\\n"
-                     "Your code must create a variable named 'predictions'.\\n")
-    sys.exit(1)
-
-_pp_raw_preds = globals()["predictions"]
-if _pp_raw_preds is ... or _pp_raw_preds is None:
-    sys.stderr.write("Validation Error: 'predictions' was not set.\\n"
-                     "Please train a model and assign your predictions to 'predictions'.\\n")
-    sys.exit(1)
-
-try:
-    import pandas as _pp_pd
-    if isinstance(_pp_raw_preds, (_pp_pd.Series, _pp_pd.DataFrame)):
-        _pp_preds_arr = _pp_raw_preds.to_numpy()
-    else:
-        _pp_preds_arr = np.asarray(_pp_raw_preds)
-
-    if not np.issubdtype(_pp_preds_arr.dtype, np.number):
-        sys.stderr.write("Validation Error: 'predictions' must contain numeric values.\\n")
-        sys.exit(1)
-
-    _pp_predictions = _pp_preds_arr.astype(float).reshape(-1)
-except Exception as _pp_err:
-    sys.stderr.write(f"Validation Error: Could not convert 'predictions' to numeric array: {_pp_err}\\n")
-    sys.exit(1)
-
-_pp_expected_count = ${expectedCount}
-if len(_pp_predictions) != _pp_expected_count:
-    sys.stderr.write(
-        f"Validation Error: Expected {_pp_expected_count} predictions (one per row in test.csv), "
-        f"but received {len(_pp_predictions)}.\\n"
-    )
-    sys.exit(1)
-
-if np.isnan(_pp_predictions).any():
-    sys.stderr.write("Validation Error: Predictions contain NaN (missing) values.\\n")
-    sys.exit(1)
-
-if np.isinf(_pp_predictions).any():
-    sys.stderr.write("Validation Error: Predictions contain infinite values.\\n")
-    sys.exit(1)
-
-# Emit predictions as a compact CSV line so the server can score them
-print("__PP_PREDS__:" + ",".join(f"{v:.6f}" for v in _pp_predictions))
+    print("\\n__PP_IMG__:" + _pp_img_b64)
+print("\\n__PP_VAL__:" + json.dumps(_pp_val_payload))
 `;
 
-    const result = await executeCode("python", wrappedSource, "");
+    // 3. Execute code via standard execution runner
+    const rawResult = await executeCode("python", wrappedSource, "");
 
-    // ── Extract sentinels from stdout ───────────────────────────────────────
-    const PRED_SENTINEL = "__PP_PREDS__:";
-    const IMG_SENTINEL = "__PP_IMAGE__:";
-    const stdoutLines = (result.stdout ?? "").split("\n");
-    const predLine = stdoutLines.find((l) => l.startsWith(PRED_SENTINEL));
-    const imgLine = stdoutLines.find((l) => l.startsWith(IMG_SENTINEL));
+    // 4. Extract sentinels from stdout without polluting user's terminal output
+    const IMG_SENTINEL = "__PP_IMG__:";
+    const VAL_SENTINEL = "__PP_VAL__:";
 
-    const image = imgLine
-      ? `data:image/png;base64,${imgLine.slice(IMG_SENTINEL.length).trim()}`
-      : undefined;
+    const rawLines = (rawResult.stdout ?? "").split("\n");
+    let image: string | undefined;
+    let valPayload: {
+      has_runtime_error?: boolean;
+      has_predictions_var?: boolean;
+      is_unassigned?: boolean;
+      is_numeric?: boolean;
+      count?: number;
+      has_nan?: boolean;
+      has_inf?: boolean;
+      predictions?: number[] | null;
+    } | null = null;
 
-    const filteredStdout = stdoutLines
-      .filter((l) => !l.startsWith(PRED_SENTINEL) && !l.startsWith(IMG_SENTINEL));
-
-    if (!predLine) {
-      // Execution failed or predictions weren't produced – return as-is
-      return NextResponse.json({
-        ...result,
-        stdout: filteredStdout.join("\n").trim(),
-        image,
-      });
+    const cleanStdoutLines: string[] = [];
+    for (const line of rawLines) {
+      if (line.startsWith(IMG_SENTINEL)) {
+        const b64 = line.slice(IMG_SENTINEL.length).trim();
+        if (b64) image = `data:image/png;base64,${b64}`;
+      } else if (line.startsWith(VAL_SENTINEL)) {
+        try {
+          valPayload = JSON.parse(line.slice(VAL_SENTINEL.length).trim());
+        } catch {
+          // Ignore JSON parse failure
+        }
+      } else {
+        cleanStdoutLines.push(line);
+      }
     }
 
-    // Parse predictions
-    const predValues = predLine
-      .slice(PRED_SENTINEL.length)
-      .split(",")
-      .map((v) => parseFloat(v));
+    const cleanStdout = cleanStdoutLines.join("\n").trim();
+    const cleanStderr = (rawResult.stderr ?? "").trim();
+    const hasExecutionError = rawResult.exitCode !== 0 || cleanStderr.length > 0;
 
-    // ── Score against server-side answer key (NEVER returned to client) ──────
-    const trueValues = answerKey.map((r) => r.amount_printed);
-    const sumActual = trueValues.reduce((a, b) => a + b, 0);
-    if (sumActual <= 0) {
-      return NextResponse.json({ error: "Answer key has non-positive sum" }, { status: 500 });
+    // 5. Build independent Validation Feedback
+    let validation: ValidationFeedback;
+
+    if (hasExecutionError || valPayload?.has_runtime_error) {
+      validation = {
+        status: "error",
+        title: "Execution Error Detected",
+        message: "Your code failed to run to completion. Check the Console tab for the Python traceback.",
+        hints: [
+          "Resolve any syntax or runtime exceptions shown in the Console output.",
+          "Check imported libraries and dataset variable references (train_df, test_df).",
+        ],
+        checks: [
+          { id: "exec", label: "Python Execution (Exit 0)", passed: false, message: "Code terminated with errors" },
+          { id: "var", label: "Variable 'predictions' Defined", passed: false },
+          { id: "len", label: `Output Length Match (${expectedCount.toLocaleString()} rows)`, passed: false },
+          { id: "valid", label: "Numeric Values (No NaN / Inf)", passed: false },
+          { id: "score", label: "Benchmark Evaluation", passed: false },
+        ],
+      };
+    } else if (!valPayload) {
+      validation = {
+        status: "failed",
+        title: "Validation Incomplete",
+        message: "Unable to inspect model outputs. Ensure your code finishes executing successfully.",
+        hints: ["Make sure the script runs and finishes without unhandled interruptions."],
+        checks: [
+          { id: "exec", label: "Python Execution (Exit 0)", passed: true },
+          { id: "var", label: "Variable 'predictions' Defined", passed: false },
+          { id: "len", label: `Output Length Match (${expectedCount.toLocaleString()} rows)`, passed: false },
+          { id: "valid", label: "Numeric Values (No NaN / Inf)", passed: false },
+          { id: "score", label: "Benchmark Evaluation", passed: false },
+        ],
+      };
+    } else if (!valPayload.has_predictions_var) {
+      validation = {
+        status: "failed",
+        title: "Missing 'predictions' Variable",
+        message: "Your code ran cleanly (Exit 0), but did not define a 'predictions' variable.",
+        hints: [
+          "Train your ML model on train_df and predict on test_df.",
+          "Assign your output array or Series directly to 'predictions' (e.g. predictions = model.predict(X_test)).",
+        ],
+        checks: [
+          { id: "exec", label: "Python Execution (Exit 0)", passed: true },
+          { id: "var", label: "Variable 'predictions' Defined", passed: false, message: "Variable not found in global scope" },
+          { id: "len", label: `Output Length Match (${expectedCount.toLocaleString()} rows)`, passed: false },
+          { id: "valid", label: "Numeric Values (No NaN / Inf)", passed: false },
+          { id: "score", label: "Benchmark Evaluation", passed: false },
+        ],
+      };
+    } else if (valPayload.is_unassigned) {
+      validation = {
+        status: "failed",
+        title: "Unassigned 'predictions' Variable",
+        message: "The 'predictions' variable is still set to None or placeholder '...'.",
+        hints: [
+          "Replace the placeholder with predictions from your trained regression model.",
+          "Example: predictions = model.predict(X_test)",
+        ],
+        checks: [
+          { id: "exec", label: "Python Execution (Exit 0)", passed: true },
+          { id: "var", label: "Variable 'predictions' Defined", passed: false, message: "Placeholder not replaced" },
+          { id: "len", label: `Output Length Match (${expectedCount.toLocaleString()} rows)`, passed: false },
+          { id: "valid", label: "Numeric Values (No NaN / Inf)", passed: false },
+          { id: "score", label: "Benchmark Evaluation", passed: false },
+        ],
+      };
+    } else if (!valPayload.is_numeric) {
+      validation = {
+        status: "failed",
+        title: "Non-Numeric Predictions",
+        message: "The 'predictions' variable contains non-numeric data types.",
+        hints: [
+          "Ensure your model outputs numeric floating point or integer values for 'amount_printed'.",
+        ],
+        checks: [
+          { id: "exec", label: "Python Execution (Exit 0)", passed: true },
+          { id: "var", label: "Variable 'predictions' Defined", passed: true },
+          { id: "len", label: `Output Length Match (${expectedCount.toLocaleString()} rows)`, passed: valPayload.count === expectedCount },
+          { id: "valid", label: "Numeric Values (No NaN / Inf)", passed: false, message: "Values must be numeric" },
+          { id: "score", label: "Benchmark Evaluation", passed: false },
+        ],
+      };
+    } else if (valPayload.count !== expectedCount) {
+      const receivedCount = valPayload.count ?? 0;
+      validation = {
+        status: "failed",
+        title: "Prediction Count Mismatch",
+        message: `Expected ${expectedCount.toLocaleString()} predictions for test.csv, but received ${receivedCount.toLocaleString()}.`,
+        hints: [
+          `Ensure you generate exactly one prediction for each row in test.csv (${expectedCount} rows).`,
+          "Avoid filtering or dropping rows from test_df before generating predictions.",
+        ],
+        checks: [
+          { id: "exec", label: "Python Execution (Exit 0)", passed: true },
+          { id: "var", label: "Variable 'predictions' Defined", passed: true },
+          { id: "len", label: `Output Length Match (${expectedCount.toLocaleString()} rows)`, passed: false, message: `Received ${receivedCount} items` },
+          { id: "valid", label: "Numeric Values (No NaN / Inf)", passed: !valPayload.has_nan && !valPayload.has_inf },
+          { id: "score", label: "Benchmark Evaluation", passed: false },
+        ],
+      };
+    } else if (valPayload.has_nan || valPayload.has_inf) {
+      validation = {
+        status: "failed",
+        title: "NaN or Infinite Values Detected",
+        message: "Your predictions array contains NaN (missing) or infinite values.",
+        hints: [
+          "Impute missing values in test features (e.g. SimpleImputer or fillna) before running prediction.",
+          "Check for division by zero or extreme scaling transformations.",
+        ],
+        checks: [
+          { id: "exec", label: "Python Execution (Exit 0)", passed: true },
+          { id: "var", label: "Variable 'predictions' Defined", passed: true },
+          { id: "len", label: `Output Length Match (${expectedCount.toLocaleString()} rows)`, passed: true },
+          { id: "valid", label: "Numeric Values (No NaN / Inf)", passed: false, message: "Contains NaN or Inf" },
+          { id: "score", label: "Benchmark Evaluation", passed: false },
+        ],
+      };
+    } else if (Array.isArray(valPayload.predictions) && valPayload.predictions.length === expectedCount) {
+      // ── Grade against server-side answer key ──────────────────────────────
+      const trueValues = answerKey.map((r) => r.amount_printed);
+      const sumActual = trueValues.reduce((a, b) => a + b, 0);
+      const predValues = valPayload.predictions;
+
+      const sumAbsError = predValues.reduce(
+        (acc, pred, i) => acc + Math.abs(pred - trueValues[i]),
+        0
+      );
+      const errorPct = sumActual > 0 ? (sumAbsError / sumActual) * 100 : 0;
+      const points = calculatePoints(errorPct);
+
+      const hints: string[] = [];
+      if (points >= 950) {
+        hints.push("🏆 Excellent accuracy! Your model achieves top tier benchmark ranking.");
+        hints.push("Try fine-tuning learning rates or testing ensemble voting to push error even lower.");
+      } else if (points >= 750) {
+        hints.push("🎯 Solid model performance! Good generalization on unseen test data.");
+        hints.push("Tip: Try tuning hyperparameters (e.g., max_iter, learning_rate) or tree depth in HistGradientBoostingRegressor / RandomForest.");
+      } else {
+        hints.push("📈 Model validated! To improve points: Ensure categorical columns (paper_type, shift, machine_type) are one-hot encoded.");
+        hints.push("Tip: Standardize numeric features with StandardScaler and handle missing data with SimpleImputer.");
+      }
+
+      validation = {
+        status: "passed",
+        title: points >= 950 ? "Outstanding Accuracy!" : points >= 750 ? "Validation Passed!" : "Model Graded",
+        message: `Evaluation complete: ${errorPct.toFixed(2)}% test validation error (${points} / 1000 pts).`,
+        points,
+        maxPoints: 1000,
+        errorPct: parseFloat(errorPct.toFixed(2)),
+        hints,
+        checks: [
+          { id: "exec", label: "Python Execution (Exit 0)", passed: true },
+          { id: "var", label: "Variable 'predictions' Defined", passed: true },
+          { id: "len", label: `Output Length Match (${expectedCount.toLocaleString()} rows)`, passed: true },
+          { id: "valid", label: "Numeric Values (No NaN / Inf)", passed: true },
+          { id: "score", label: `Benchmark Scored: ${points} pts (${errorPct.toFixed(2)}% error)`, passed: true },
+        ],
+      };
+    } else {
+      validation = {
+        status: "failed",
+        title: "Validation Incomplete",
+        message: "Unable to complete scoring evaluation on model outputs.",
+        hints: ["Verify that test predictions are generated completely."],
+        checks: [
+          { id: "exec", label: "Python Execution (Exit 0)", passed: true },
+          { id: "var", label: "Variable 'predictions' Defined", passed: true },
+          { id: "len", label: `Output Length Match (${expectedCount.toLocaleString()} rows)`, passed: false },
+          { id: "valid", label: "Numeric Values (No NaN / Inf)", passed: false },
+          { id: "score", label: "Benchmark Evaluation", passed: false },
+        ],
+      };
     }
 
-    const sumAbsError = predValues.reduce(
-      (acc, pred, i) => acc + Math.abs(pred - trueValues[i]),
-      0
-    );
-    const errorPct = (sumAbsError / sumActual) * 100;
-    const points = calculatePoints(errorPct);
-
-    // Build clean output for the contestant
-    const publicStdout = [
-      ...filteredStdout,
-      `Validation Error: ${errorPct.toFixed(2)}%`,
-      `Points: ${points}`,
-    ]
-      .join("\n")
-      .trim();
-
+    // Return terminal outputs cleanly separated from validation feedback
     return NextResponse.json({
-      ...result,
-      stdout: publicStdout,
-      stderr: result.stderr ?? "",
+      stdout: cleanStdout,
+      stderr: cleanStderr,
+      exitCode: rawResult.exitCode,
+      status: rawResult.status,
+      time: rawResult.time,
+      memory: rawResult.memory,
       image,
+      validation,
     });
   } catch (error) {
     return NextResponse.json(
@@ -234,4 +402,4 @@ print("__PP_PREDS__:" + ",".join(f"{v:.6f}" for v in _pp_predictions))
       { status: 500 }
     );
   }
-}
+}

@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "server": "node executor/server.js",
-    "terminal": "node executor/server.js",
+    "server": "node server/index.js",
+    "terminal": "node server/index.js",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node scripts/test-system.js"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
