@@ -37,7 +37,7 @@ export default function Home() {
       setProjects(await res.json());
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load projects");
+      setError(e instanceof Error ? e.message : "Failed to load operations blueprint");
     } finally {
       setLoading(false);
     }
@@ -50,7 +50,7 @@ export default function Home() {
 
   const createProject = async () => {
     if (creating) return;
-    const name = newName.trim() || "Untitled Project";
+    const name = newName.trim() || "Untitled Mission";
     setCreating(true);
     try {
       const res = await fetch("/api/projects", {
@@ -66,7 +66,7 @@ export default function Home() {
       setNewName("");
       router.push(`/project/${project.id}`);
     } catch {
-      toast.show("Couldn't create project — check your connection.", "error");
+      toast.show("Couldn't create mission workspace — check your connection.", "error");
     } finally {
       setCreating(false);
     }
@@ -91,8 +91,8 @@ export default function Home() {
   const deleteProject = async (p: Project) => {
     const ok = await dialog.confirm({
       title: `Delete "${p.name}"?`,
-      message: "This permanently deletes the project and every file in it. This can't be undone.",
-      confirmLabel: "Delete",
+      message: "This permanently deletes the workspace and every file in it. This action cannot be undone.",
+      confirmLabel: "Delete Mission",
       destructive: true,
     });
     if (!ok) return;
@@ -106,30 +106,69 @@ export default function Home() {
       }
       setProjects((prev) => prev.filter((x) => x.id !== p.id));
     } catch {
-      toast.show("Couldn't delete project — check your connection.", "error");
+      toast.show("Couldn't delete mission workspace — check your connection.", "error");
     } finally {
       setDeletingId(null);
     }
   };
 
   return (
-    <div className="flex flex-col flex-1 items-center bg-(--surface-panel) text-(--text-primary) min-h-screen px-6 py-20">
+    <div className="flex flex-col flex-1 items-center bg-[#0a0a0d] text-neutral-200 min-h-screen px-6 py-14">
       <div className="w-full max-w-xl">
-        <h1 className="text-[28px] font-semibold tracking-tight mb-1">Online IDE</h1>
-        <p className="text-(--text-secondary) text-[13px] mb-8">
-          A multi-language, browser-based code editor with a file tree and one-click execution.
+        {/* Header Badge */}
+        <div className="flex items-center gap-2.5 mb-2.5">
+          <span className="text-xl">🎭</span>
+          <span className="stamp-classified">EYES ONLY // TOP SECRET</span>
+        </div>
+
+        <h1 className="text-[26px] font-bold tracking-tight mb-1 text-white uppercase">
+          Plan Del Profesor
+        </h1>
+        <p className="text-neutral-400 text-[13px] mb-8 font-mono">
+          ML Heist Operations Command & Python Control Center.
         </p>
 
+        {/* Featured Heist Challenge Banner */}
+        <div className="mb-8 p-5 rounded-xl bg-[#121216] border border-[#c81d25]/30 hover:border-[#c81d25]/50 transition-colors flex flex-col gap-3.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="text-lg">🏛️</span>
+              <div>
+                <span className="text-[10px] font-mono uppercase text-[#c5a059] font-bold tracking-wider">
+                  ACTIVE OPERATION
+                </span>
+                <h2 className="text-base font-semibold text-white">
+                  Printing Press ML Heist
+                </h2>
+              </div>
+            </div>
+            <span className="stamp-gold">1000 PTS</span>
+          </div>
+
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            Infiltrate the Royal Mint's production telemetry and predict the currency print yields before the vault closes.
+          </p>
+
+          <Link
+            href="/printing-press"
+            className="w-full flex items-center justify-center gap-2 bg-[#c81d25] hover:bg-[#db2831] text-white rounded-lg h-9 text-[12.5px] font-semibold tracking-wider uppercase transition-colors"
+          >
+            <IconPlay className="w-3 h-3 text-white" />
+            Enter ML Heist Control Room
+          </Link>
+        </div>
+
         {error && (
-          <div className="mb-6 rounded-lg border border-(--accent-stop)/30 bg-(--accent-stop)/10 px-3.5 py-3 text-[13px] text-(--accent-stop) leading-relaxed">
+          <div className="mb-6 rounded-lg border border-[#c81d25]/30 bg-[#c81d25]/10 px-3.5 py-3 text-[13px] text-[#ff8080] leading-relaxed">
             {error}
           </div>
         )}
 
-        <div className="flex gap-2 mb-10">
+        {/* Create workspace */}
+        <div className="flex gap-2 mb-6">
           <input
-            className="flex-1 bg-white dark:bg-white/[.06] border border-(--border-hairline-strong) rounded-md px-3 h-9 text-[13px] outline-none focus-visible:border-(--accent) placeholder:text-(--text-tertiary) disabled:opacity-60"
-            placeholder="New project name"
+            className="flex-1 bg-[#121216] border border-white/10 rounded-lg px-3.5 h-9 text-[13px] outline-none focus-visible:border-[#c81d25] placeholder:text-neutral-500 disabled:opacity-60 text-white"
+            placeholder="New heist blueprint name..."
             value={newName}
             disabled={creating}
             onChange={(e) => setNewName(e.target.value)}
@@ -138,78 +177,70 @@ export default function Home() {
           <button
             onClick={createProject}
             disabled={creating}
-            className="bg-(--accent) hover:brightness-110 disabled:opacity-60 text-white px-4 h-9 rounded-md text-[13px] font-medium transition min-w-[76px]"
+            className="bg-[#18181f] hover:bg-[#20202a] border border-[#c5a059]/40 text-[#c5a059] hover:border-[#c5a059] disabled:opacity-60 px-4 h-9 rounded-lg text-[12.5px] font-medium transition min-w-[80px]"
           >
-            {creating ? "Creating…" : "Create"}
+            {creating ? "Creating…" : "New Plan"}
           </button>
         </div>
 
-        <div className="flex flex-col gap-2.5 mb-10">
+        <div className="flex flex-col gap-2.5 mb-9">
           <button
             onClick={openLocalFolder}
             title={localFsSupported ? undefined : "Needs Chrome or Edge"}
-            className="w-full flex items-center justify-center gap-2 border border-dashed border-(--border-hairline-strong) hover:border-(--accent) hover:text-(--accent) text-(--text-secondary) rounded-lg h-11 text-[13px] font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 border border-dashed border-white/10 hover:border-[#c5a059]/60 hover:text-[#c5a059] text-neutral-400 rounded-lg h-10 text-[13px] font-medium transition-colors bg-[#0e0e12]"
           >
             <IconFolder className="w-4 h-4" />
-            Open a Local Folder
+            Mount Local Tactical Directory
           </button>
-
-          <Link
-            href="/printing-press"
-            className="w-full flex items-center justify-center gap-2 border border-dashed border-(--border-hairline-strong) hover:border-(--accent-run) hover:text-(--accent-run) text-(--text-secondary) rounded-lg h-11 text-[13px] font-medium transition-colors"
-          >
-            <IconPlay className="w-3.5 h-3.5 text-(--accent-run)" />
-            Printing Press ML
-          </Link>
         </div>
 
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary) mb-3">
-          Your Projects
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#c5a059] mb-3">
+          Archived Blueprints & Missions
         </h2>
 
         {loading && (
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="h-[52px] rounded-lg bg-black/[.04] dark:bg-white/[.05] animate-pulse"
+                className="h-[48px] rounded-lg bg-white/[.02] animate-pulse border border-white/5"
               />
             ))}
           </div>
         )}
 
         {!loading && projects.length === 0 && (
-          <div className="text-(--text-tertiary) text-[13px] border border-dashed border-(--border-hairline-strong) rounded-lg px-4 py-8 text-center">
-            No projects yet — create one above to get started.
+          <div className="text-neutral-500 text-[13px] border border-dashed border-white/10 rounded-lg px-4 py-8 text-center bg-[#0d0d10]">
+            No custom blueprints created yet. Start a new plan or enter the ML Heist Control Room above.
           </div>
         )}
 
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {projects.map((p) => (
             <div
               key={p.id}
-              className="group flex items-center gap-3 bg-white dark:bg-white/[.04] hover:bg-black/[.03] dark:hover:bg-white/[.07] border border-(--border-hairline) rounded-lg px-3.5 py-2.5 text-[13px] transition-colors"
+              className="group flex items-center gap-3 bg-[#111115] hover:bg-[#15151a] border border-white/5 hover:border-white/15 rounded-lg px-3.5 py-2.5 text-[13px] transition-colors"
             >
               <button
                 onClick={() => router.push(`/project/${p.id}`)}
                 className="flex items-center gap-3 flex-1 min-w-0 text-left"
               >
-                <span className="text-(--accent)">
-                  <IconFolder className="w-5 h-5" />
+                <span className="text-[#c81d25]">
+                  <IconFolder className="w-4 h-4" />
                 </span>
                 <span className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{p.name}</div>
-                  <div className="text-(--text-tertiary) text-[11px] mt-0.5">
+                  <div className="font-medium text-white truncate">{p.name}</div>
+                  <div className="text-neutral-500 text-[11px] font-mono mt-0.5">
                     {new Date(p.created_at).toLocaleString()}
                   </div>
                 </span>
               </button>
               <button
-                title="Delete project"
+                title="Delete mission"
                 aria-label={`Delete ${p.name}`}
                 onClick={() => deleteProject(p)}
                 disabled={deletingId === p.id}
-                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1.5 rounded-md text-(--text-tertiary) hover:text-(--accent-stop) hover:bg-(--accent-stop)/10 transition disabled:opacity-60"
+                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1.5 rounded-md text-neutral-500 hover:text-[#c81d25] hover:bg-[#c81d25]/10 transition disabled:opacity-60"
               >
                 <IconTrash className="w-3.5 h-3.5" />
               </button>

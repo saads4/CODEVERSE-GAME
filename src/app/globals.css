@@ -1,64 +1,46 @@
 @import "tailwindcss";
 
 /*
-  Semantic color tokens modeled on macOS system materials (sidebar, toolbar,
-  content) rather than a single flat gray scale, so light/dark both read as
-  native surfaces instead of an inverted palette. The code editor itself stays
-  dark in both modes (an intentional choice, same as Xcode's editor theme
-  being independent of the app's own appearance).
+  Money Heist / La Casa de Papel Aesthetic Tokens
+  Restrained Matte Black, Dark Charcoal, Deep Crimson Red, and Warm Antique Gold.
 */
 :root {
-  --surface-toolbar: #ececec;
-  --surface-sidebar: #f5f5f6;
-  --surface-panel: #f7f7f8;
-  --surface-editor: #1e1e1e;
-  --surface-editor-gutter: #1e1e1e;
+  --surface-toolbar: #111115;
+  --surface-sidebar: #0d0d10;
+  --surface-panel: #0a0a0d;
+  --surface-editor: #0e0f12;
+  --surface-editor-gutter: #0a0a0d;
+  --surface-card: #141418;
+  --surface-card-hover: #191920;
 
-  --border-hairline: rgba(0, 0, 0, 0.11);
-  --border-hairline-strong: rgba(0, 0, 0, 0.18);
+  --border-hairline: rgba(255, 255, 255, 0.08);
+  --border-hairline-strong: rgba(255, 255, 255, 0.14);
+  --border-crimson: rgba(200, 29, 37, 0.35);
+  --border-gold: rgba(197, 160, 89, 0.3);
 
-  --text-primary: #1d1d1f;
-  --text-secondary: rgba(0, 0, 0, 0.55);
-  --text-tertiary: rgba(0, 0, 0, 0.35);
+  --text-primary: #ededef;
+  --text-secondary: #9ca3af;
+  --text-tertiary: #6b7280;
 
-  --accent: #007aff;
-  --accent-tint: rgba(0, 122, 255, 0.14);
-  --accent-run: #248a3d;
-  --accent-run-hover: #1f7a35;
-  --accent-stop: #d70015;
+  --heist-red: #c81d25;
+  --heist-red-hover: #db2831;
+  --heist-red-dark: #660f14;
+  --heist-red-subtle: rgba(200, 29, 37, 0.1);
 
-  --focus-ring: #007aff;
+  --heist-gold: #c5a059;
+  --heist-gold-hover: #d8b26e;
+  --heist-gold-subtle: rgba(197, 160, 89, 0.1);
 
-  --font-ui:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
-  --font-mono:
-    ui-monospace, "SF Mono", "Cascadia Code", "Menlo", "Consolas", monospace;
-}
+  --accent: #c81d25;
+  --accent-tint: rgba(200, 29, 37, 0.12);
+  --accent-run: #c81d25;
+  --accent-run-hover: #db2831;
+  --accent-stop: #c81d25;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface-toolbar: #292a2c;
-    --surface-sidebar: #242527;
-    --surface-panel: #1f2022;
-    --surface-editor: #1e1e1e;
-    --surface-editor-gutter: #1e1e1e;
+  --focus-ring: #c81d25;
 
-    --border-hairline: rgba(255, 255, 255, 0.1);
-    --border-hairline-strong: rgba(255, 255, 255, 0.16);
-
-    --text-primary: #f5f5f7;
-    --text-secondary: rgba(255, 255, 255, 0.55);
-    --text-tertiary: rgba(255, 255, 255, 0.35);
-
-    --accent: #0a84ff;
-    --accent-tint: rgba(10, 132, 255, 0.22);
-    --accent-run: #30d158;
-    --accent-run-hover: #28b84c;
-    --accent-stop: #ff453a;
-
-    --focus-ring: #0a84ff;
-  }
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
 }
 
 @theme inline {
@@ -66,11 +48,14 @@
   --color-surface-sidebar: var(--surface-sidebar);
   --color-surface-panel: var(--surface-panel);
   --color-surface-editor: var(--surface-editor);
+  --color-surface-card: var(--surface-card);
   --color-border-hairline: var(--border-hairline);
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
   --color-accent: var(--accent);
+  --color-heist-red: var(--heist-red);
+  --color-heist-gold: var(--heist-gold);
   --font-sans: var(--font-ui);
   --font-mono: var(--font-mono);
 }
@@ -83,30 +68,73 @@ body {
   background: var(--surface-panel);
   color: var(--text-primary);
   font-family: var(--font-ui);
+  background-color: #0a0a0d;
 }
 
-/* Visible keyboard focus everywhere — desktop apps rely on it, not just hover. */
+/* Visible keyboard focus */
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
   border-radius: 4px;
 }
 
-/* Thin, native-feeling scrollbars instead of the default browser chrome. */
+/* Restrained, stealth scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border-hairline-strong) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 *::-webkit-scrollbar-thumb {
-  background: var(--border-hairline-strong);
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: content-box;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 *::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Refined Military / Classified stamps */
+.stamp-classified {
+  display: inline-flex;
+  align-items: center;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid #c81d25;
+  color: #ea3943;
+  background: rgba(200, 29, 37, 0.08);
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.stamp-gold {
+  display: inline-flex;
+  align-items: center;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid #c5a059;
+  color: #c5a059;
+  background: rgba(197, 160, 89, 0.08);
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+/* Polished understated modal animation */
+@keyframes vault-reveal {
+  0% { transform: scale(0.97); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-vault-open {
+  animation: vault-reveal 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

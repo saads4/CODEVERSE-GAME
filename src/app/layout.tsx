@@ -5,14 +5,14 @@ import { ToastProvider } from "@/components/ToastProvider";
 import { DialogProvider } from "@/components/DialogProvider";
 
 export const metadata: Metadata = {
-  title: "Online IDE",
-  description: "A browser-based multi-language IDE",
+  title: "Plan Del Profesor // ML Heist Control Room",
+  description: "Money Heist ML operations control room and Python code editor",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
+    <html lang="en" className="h-full antialiased dark">
+      <body className="min-h-full flex flex-col bg-[#0a0a0d] text-neutral-100">
         <ToastProvider>
           <DialogProvider>{children}</DialogProvider>
         </ToastProvider>
