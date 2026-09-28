@@ -293,26 +293,16 @@ create policy "allow all on files" on files for all using (true) with check (tru
 
 ### Running the Execution Sandbox
 
-Start the execution container service using Docker Compose:
+Start the terminal and execution backend service:
 
 ```bash
-docker compose up --build -d
+npm run server
 ```
 
-To verify that the executor service is healthy:
+To verify that the terminal and executor service is healthy:
 ```bash
 curl http://localhost:4000/health
-# Response: {"ok":true}
-```
-
-To view logs if a code execution fails:
-```bash
-docker compose logs -f executor
-```
-
-To stop the executor when you're done:
-```bash
-docker compose down
+# Response: {"ok":true,"nodePty":true}
 ```
 
 ---

@@ -3,24 +3,24 @@
 ## Requirements
 
 - Node.js 20 or newer and npm
-- A Supabase project for cloud projects
-- Docker Desktop with Compose v2
+- A Supabase project for cloud projects (optional if running Printing Press or local mode)
 - Chrome or Edge for local-folder mode
+- Native compilers/interpreters for supported languages (Python, GCC/G++, Node.js)
 
 ## Install and start
 
 ```bash
 npm install
 copy .env.local.example .env.local
-docker compose up --build -d
-npm run dev
+npm run server    # Starts node-pty interactive terminal and execution backend on port 4000
+npm run dev       # Starts Next.js IDE frontend on port 3000
 ```
 
-Open `http://localhost:3000`. Keep the executor running while using **Run**. Stop it with `docker compose down` when finished. Use `npm run lint`, `npx tsc --noEmit`, and `npm run build` for validation and production checks.
+Open `http://localhost:3000`. Keep the terminal server (`npm run server`) running while using **Run** and the **Terminal** tab. Use `npm run lint` and `npx tsc --noEmit` for validation and type checks.
 
 ## Environment variables
 
-`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` configure the browser-safe Supabase client. The legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` name is also accepted. `EXECUTOR_URL` is the server-only URL for the local executor and defaults to `http://localhost:4000`. The optional `NEXT_PUBLIC_TERMINAL_WS_URL` must point to a sandboxed WebSocket service; it must not provide direct host shell access.
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` configure the browser-safe Supabase client. The legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` name is also accepted. `EXECUTOR_URL` is the server-only URL for the execution service and defaults to `http://localhost:4000`. `NEXT_PUBLIC_TERMINAL_WS_URL` points to the interactive WebSocket terminal service (defaults to `ws://localhost:4000/terminal`).
 
 Do not commit `.env.local`. The public Supabase anon key is protected by database policies, and service-role credentials must never use a `NEXT_PUBLIC_` prefix.
 
@@ -29,15 +29,18 @@ Do not commit `.env.local`. The public Supabase anon key is protected by databas
 1. Create a Supabase project.
 2. Copy the project URL and anon key into `.env.local`.
 3. Run `supabase/schema.sql` in Supabase SQL Editor.
-4. The included initial policies are open for this unauthenticated learning app. Add authentication and user-scoped RLS before production use.
+4. The included initial policies are open for this learning app. Add authentication and user-scoped RLS before production use.
 
 Cloud project and file operations go through the Next.js API routes, which use the Supabase client on the server.
 
-## Executor setup
+## Interactive Terminal & Execution Setup
 
-The Compose service builds one local image that contains Python, GCC, G++, Node.js, and esbuild. The executor accepts `language`, `source`, and `stdin` at `POST http://localhost:4000/execute` and returns `stdout`, `stderr`, `status`, `exitCode`, and `time`. Each run uses a new container with no network, 0.5 CPU, 128 MB memory, a 5-second timeout, a process limit, a read-only filesystem, and automatic cleanup.
+The backend service (`executor/server.js`) provides:
+1. **Interactive xterm.js + node-pty Terminal:** Real-time bidirectional WebSockets on `ws://localhost:4000/terminal` with live keyboard input, ANSI colors, process lifecycle management, resize observation, and session persistence.
+2. **Workspace Sandboxing:** Each project session runs inside an isolated workspace directory (`workspaces/<projectId>`) with sanitized environment variables, preventing access to server secret keys.
+3. **Native Code Runner:** Accepts `language`, `source`, and `stdin` at `POST http://localhost:4000/execute` and returns `stdout`, `stderr`, `status`, `exitCode`, and `time`.
 
-The supported execution languages are Python (`.py`), C (`.c`), C++ (`.cpp`/`.cc`), JavaScript (`.js`), JSX (`.jsx`), and TSX (`.tsx`). HTML (`.html`/`.htm`) and CSS (`.css`) are preview files: **Run** reports that a preview is available, and the Preview panel renders them in its sandboxed iframe instead of sending them to the executor.
+The supported execution languages are Python (`.py`), C (`.c`), C++ (`.cpp`/`.cc`), JavaScript (`.js`), JSX (`.jsx`), and TSX (`.tsx`). HTML (`.html`/`.htm`) and CSS (`.css`) are preview files rendered in the sandboxed Preview panel.
 
 For a direct health check:
 
@@ -45,27 +48,16 @@ For a direct health check:
 curl http://localhost:4000/health
 ```
 
-The Next.js `/api/run` endpoint keeps the editor-facing request shape: `{ "filename": "main.py", "content": "print(1)", "stdin": "" }`.
-
 ## How to use the IDE
 
 Create a cloud project from the home page or choose **Open a Local Folder** in Chrome or Edge. Use the file explorer to create nested files and folders. Double-click a name to rename it, use the row actions to create children or delete it, and click files to open multiple tabs. Supported editor and runner files include `.py`, `.js`, `.c`, `.cpp`, `.jsx`, `.html`, and `.css`.
 
-Use **Ctrl/Cmd+S** to save the active file. Select a runnable file and press **Run**. Enter optional stdin in the Console panel before running. The Preview panel inlines local HTML, CSS, and JavaScript into a sandboxed iframe; it does not grant the preview host access to the parent page.
-
-## Local persistence and sync
-
-Cloud project snapshots are cached in IndexedDB (`browser-ide`) after each server refresh, so a refresh can immediately restore the last local snapshot while Supabase is contacted for the current copy. File edits are autosaved to Supabase and the cache. Local-folder mode uses the browser File System Access API, stores the directory handle in IndexedDB, and writes directly to the selected folder after permission is restored.
-
-## Terminal and preview setup
-
-The terminal UI uses xterm.js. It is intentionally disconnected unless `NEXT_PUBLIC_TERMINAL_WS_URL` is configured. A terminal service must enforce authentication, command allowlists, resource limits, and a container or other sandbox. Never point it at an unrestricted host shell. Preview runs with `sandbox="allow-scripts allow-forms allow-modals allow-popups"` and only receives the selected project’s text assets.
+Use **Ctrl/Cmd+S** to save the active file. Select a runnable file and press **Run**. Enter optional stdin in the Console panel before running. Switch to the **Terminal** tab for a full interactive shell in your project workspace. The Preview panel inlines local HTML, CSS, and JavaScript into a sandboxed iframe.
 
 ## Troubleshooting
 
+- **Server errors:** Run `npm run server` and verify `http://localhost:4000/health` returns `{ "ok": true }`.
 - **Supabase errors:** verify both public variables and run `supabase/schema.sql`.
-- **Executor errors:** run `docker compose logs executor`, verify Docker Desktop is running, and rebuild with `docker compose up --build -d`.
 - **No local folder:** use Chrome or Edge and grant read/write permission again after a browser restart.
-- **No preview:** add an `index.html` or another `.html` file.
-- **Terminal disconnected:** configure a safe WebSocket service; the UI intentionally does not create a host terminal itself.
-- **Build type errors:** remove `.next`, run `npm install`, then run `npx tsc --noEmit` and `npm run build` again.
+- **Terminal disconnected:** ensure `npm run server` is running on port 4000.
+

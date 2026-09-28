@@ -404,7 +404,7 @@ export default function LocalFolderPage() {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, content: file.content, stdin }),
+        body: JSON.stringify({ filename: file.name, content: file.content, stdin, projectId: "local" }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -597,7 +597,10 @@ export default function LocalFolderPage() {
               <OutputPanel running={running} result={runResult} stdin={stdin} onStdinChange={setStdin} />
             ) : rightPanel === "terminal" ? (
               <TerminalPanel
-                socketUrl={process.env.NEXT_PUBLIC_TERMINAL_WS_URL}
+                socketUrl={
+                  (process.env.NEXT_PUBLIC_TERMINAL_WS_URL || "ws://localhost:4000/terminal") +
+                  "?projectId=local"
+                }
                 filename={activeFile?.name}
                 content={activeFile?.content}
                 running={running}

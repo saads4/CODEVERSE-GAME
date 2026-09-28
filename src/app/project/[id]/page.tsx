@@ -18,6 +18,7 @@ import { useDialog } from "@/components/DialogProvider";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { flattenTreeWithPaths, hasHtmlEntry, isPreviewableFile, pickPreviewEntry } from "@/lib/previewFiles";
 import { cacheProject, getCachedProject } from "@/lib/localDb";
+import { syncWorkspaceFiles } from "@/lib/workspaceSync";
 
 const AUTOSAVE_DELAY_MS = 900;
 
@@ -111,6 +112,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setProject(data.project);
     setTree(data.tree);
     await cacheProject(data.project, data.tree);
+    void syncWorkspaceFiles(projectId, data.tree);
   }, [projectId]);
 
   useEffect(() => {
@@ -333,7 +335,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, content: file.content, stdin }),
+        body: JSON.stringify({ filename: file.name, content: file.content, stdin, projectId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -510,7 +512,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <OutputPanel running={running} result={runResult} stdin={stdin} onStdinChange={setStdin} />
             ) : rightPanel === "terminal" ? (
               <TerminalPanel
-                socketUrl={process.env.NEXT_PUBLIC_TERMINAL_WS_URL}
+                socketUrl={
+                  (process.env.NEXT_PUBLIC_TERMINAL_WS_URL || "ws://localhost:4000/terminal") +
+                  `?projectId=${encodeURIComponent(projectId)}`
+                }
                 filename={activeFile?.name}
                 content={activeFile?.content}
                 running={running}

@@ -2,7 +2,7 @@ import type { Runner } from "@/lib/languageMap";
 
 const EXECUTOR_URL = process.env.EXECUTOR_URL || "http://localhost:4000";
 
-const REQUEST_TIMEOUT_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 75_000;
 
 export interface ExecuteResult {
   stdout: string;
@@ -17,7 +17,8 @@ export interface ExecuteResult {
 export async function executeCode(
   language: Runner,
   sourceCode: string,
-  stdin = ""
+  stdin = "",
+  projectId?: string
 ): Promise<ExecuteResult> {
   const controller = new AbortController();
 
@@ -33,6 +34,7 @@ export async function executeCode(
         language,
         source: sourceCode,
         stdin,
+        projectId,
       }),
       cache: "no-store",
       signal: controller.signal,
