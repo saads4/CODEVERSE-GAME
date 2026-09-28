@@ -12,6 +12,7 @@
 - [Tech Stack](#-tech-stack)
 - [Repository Structure](#-repository-structure)
 - [How the Core Components Work](#-how-the-core-components-work)
+- [Printing Press ML Challenge](#️-printing-press-ml-challenge)
 - [Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
   - [Environment Configuration](#environment-configuration)
@@ -121,6 +122,16 @@ This project demonstrates two complementary storage paradigms:
 ├── docker-compose.yml         # Container specification for the execution microservice
 ├── package.json               # Node.js dependencies and run scripts
 ├── tsconfig.json              # TypeScript configuration
+├── challenges/                # Integrated coding challenges
+│   └── printing-press/        # Printing Press ML regression challenge
+│       ├── data/              # train.csv, test.csv, answer_key.csv
+│       ├── generator.py       # Dataset generator (organizer use)
+│       ├── src/scorer.py      # Official validation and scoring script
+│       ├── tests/             # Unit tests for challenge scorer
+│       ├── benchmark.py       # Difficulty benchmarking suite
+│       ├── DESIGN.md          # Dataset design specification
+│       ├── BENCHMARK.md       # Baseline benchmark scores
+│       └── requirements.txt   # Python dependencies for challenge tools
 ├── executor/                  # Execution microservice
 │   ├── Dockerfile             # Sandbox base image (Node 22, Python 3, GCC, G++, esbuild)
 │   └── server.js              # HTTP server managing secure Docker sub-processes
@@ -131,6 +142,8 @@ This project demonstrates two complementary storage paradigms:
     │   ├── layout.tsx         # Global HTML layout and Toast/Dialog provider wrappers
     │   ├── globals.css        # Theme variables, semantic design tokens, and editor styles
     │   ├── page.tsx           # Dashboard: list projects, create projects, open local folder
+    │   ├── printing-press/    # Printing Press ML Challenge workspace route
+    │   │   └── page.tsx       # Core IDE coordinator for Printing Press ML challenge
     │   ├── project/[id]/      # Cloud Project Workspace route
     │   │   └── page.tsx       # Core IDE coordinator for Supabase-backed projects
     │   ├── local/             # Local Folder Workspace route
@@ -139,6 +152,8 @@ This project demonstrates two complementary storage paradigms:
     │       ├── projects/      # GET (list) / POST (create)
     │       │   └── [id]/      # GET (tree + project) / DELETE (remove project)
     │       ├── files/         # POST (create file/folder) / PATCH (update content/rename) / DELETE
+    │       ├── printing-press/# Printing Press challenge API handlers
+    │       │   └── run/       # POST (runs ML script, validates predictions, evaluates score)
     │       └── run/           # POST (dispatches code to the Docker executor service)
     ├── components/            # Reusable UI Components
     │   ├── Editor.tsx         # Monaco editor wrapper with theme and cursor listeners
@@ -209,6 +224,179 @@ Instead of spinning up a temporary HTTP server for static web projects, the IDE 
 - Traverses `<link rel="stylesheet">` and `<script src="...">` tags.
 - Replaces them with inline `<style>` and `<script>` elements matching local project files.
 - Injects the resulting bundle into an `iframe` with `srcDoc` and restrictive sandbox permissions (`sandbox="allow-scripts allow-forms allow-modals allow-popups"`).
+
+---
+
+## 🖨️ Printing Press ML Challenge
+
+The **Printing Press ML Challenge** is an integrated machine learning regression competition hosted within the Online IDE at `/printing-press`. Participants analyze historical operating session data from industrial printing presses and build ML models to predict the total pages produced (`amount_printed`) under unseen test conditions.
+
+### 📋 Overview & Problem Statement
+
+Given the operating parameters of an industrial printing press (speed, machine age, ambient environment, maintenance status, calibration, etc.), predict the total print output during the session.
+
+- **Training data (`train.csv`)**: 7,000 sessions with 17 columns (id, 15 operating features, and the target `amount_printed`).
+- **Test data (`test.csv`)**: 1,500 sessions with 16 columns (id and 15 operating features; target withheld).
+- **Goal**: Predict `amount_printed` for each test session as accurately as possible.
+
+---
+
+### 📊 Dataset & Features
+
+The challenge dataset files are stored in `challenges/printing-press/data/`:
+
+| File | Rows | Columns | Target (`amount_printed`) | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `train.csv` | 7,000 | 17 (id + 15 features + target) | Included | Historical training data for model fitting |
+| `test.csv` | 1,500 | 16 (id + 15 features) | **Withheld** | Unseen test sessions to generate predictions for |
+| `answer_key.csv` | 1,500 | 17 (id + 15 features + actual target) | Private Ground Truth | Organizer-only / private; **NOT available to contestants** |
+
+#### Feature Dictionary
+
+| # | Feature | Type | Range / Categories | Description |
+| :---: | :--- | :--- | :--- | :--- |
+| 1 | `printing_speed` | Numerical | 30–180 prints/min | Operational speed of the press |
+| 2 | `machine_age` | Numerical | 0–15 years | Age of the printing press machine |
+| 3 | `operating_hours` | Numerical | 1–24 hours | Total run hours during the session |
+| 4 | `temperature` | Numerical | 15–40 °C | Ambient room temperature *(contains missing values)* |
+| 5 | `humidity` | Numerical | 20–90 % | Relative humidity percentage *(contains missing values)* |
+| 6 | `power_stability` | Numerical | 0–100 | Power grid stability index *(contains missing values)* |
+| 7 | `setup_time` | Numerical | 10–120 minutes | Initial calibration and setup duration |
+| 8 | `paper_type` | Categorical | Standard, Glossy, Matte, Cardstock | Stock paper grade used |
+| 9 | `shift` | Categorical | Morning, Afternoon, Night | Work shift of the session |
+| 10 | `maintenance_status` | Categorical | Good, Average, Poor | Maintenance condition of the press |
+| 11 | `machine_type` | Categorical | Type_A, Type_B, Type_C, Type_D | Manufacturer model category |
+| 12 | `paper_quality` | Categorical | Low, Medium, High | Raw material quality grade |
+| 13 | `last_calibration_day` | Numerical | 1–365 days | Days elapsed since last calibration |
+| 14 | `operator_id` | Categorical | Op01–Op10 | Operator identifier |
+| 15 | `ink_batch_id` | Categorical | B01–B20 | Ink cartridge lot identifier |
+
+> **Note on Missing Values:** `temperature`, `humidity`, and `power_stability` contain a small percentage of missing values (`NaN`). Contestant code should perform appropriate imputation (e.g. median, mean, or model-based). All other features are complete.
+
+#### Target
+- **`amount_printed`**: Total pages/prints produced during the session (non-negative integer or float).
+
+---
+
+### 💻 Contestant Workflow
+
+1. **Access the Challenge**: Open `/printing-press` in the browser.
+2. **File Explorer**: The workspace provides three accessible files:
+   - `main.py`: The contestant's editable Python script.
+   - `train.csv`: Read-only training dataset.
+   - `test.csv`: Read-only test dataset.
+3. **Data Loading & Preprocessing**: Contestants load datasets directly with `pandas`:
+   ```python
+   import pandas as pd
+   from sklearn.ensemble import RandomForestRegressor
+
+   # Load datasets
+   train_df = pd.read_csv("train.csv")
+   test_df = pd.read_csv("test.csv")
+
+   # Preprocess features (drop target and id) & handle missing values
+   X_train = pd.get_dummies(train_df.drop(columns=["amount_printed", "id"], errors="ignore")).fillna(0)
+   X_test = pd.get_dummies(test_df.drop(columns=["id"], errors="ignore")).fillna(0)
+   X_train, X_test = X_train.align(X_test, join="left", axis=1, fill_value=0)
+   y_train = train_df["amount_printed"]
+
+   # Illustrative model fitting (lightweight baseline configuration)
+   # Note: Heavier configurations or deep trees may exceed sandbox resource/time limits
+   model = RandomForestRegressor(n_estimators=25, max_depth=8, random_state=42)
+   model.fit(X_train, y_train)
+
+   # Predict on test data
+   predictions = model.predict(X_test)
+   ```
+   > **Note on Model Complexity**: The snippet above is an illustrative example. Execution occurs inside a constrained sandbox (0.5 CPU, 512 MB memory, ~15-second execution timeout). Heavier models or large hyperparameter grids are not guaranteed to run and may hit execution limits; contestants should tune models to run efficiently.
+4. **Data Visualization Support**: Contestants can generate visual exploratory plots using `matplotlib`. Saving any plot to disk (e.g. `plt.savefig("plot.png")`) causes the IDE to automatically capture the PNG and display it inside the Output panel's **Plot Output** preview tab, complete with a download button.
+5. **Run & Evaluate**: Clicking **Run** executes the script inside the sandboxed Docker executor via `/api/printing-press/run`. The platform validates the `predictions` variable, scores it against the hidden `answer_key.csv`, and displays the execution log along with the contestant-facing result:
+   ```text
+   Validation Error: X%
+   Points: Y
+   ```
+
+---
+
+### 📥 Expected Contestant Code & Output
+
+- **Required Variable**: The script must produce and assign test predictions to a global variable named `predictions`.
+- **Supported Types**: 1D NumPy array (`np.ndarray`), pandas Series (`pd.Series`), or standard Python `list`.
+- **Length**: Must contain **exactly 1,500 elements**, corresponding 1:1 to the 1,500 rows in `test.csv`.
+- **Values**: Must be non-null, finite numeric values (no `NaN`, `null`, or `inf`).
+
+---
+
+### 🎯 Validation & Scoring Method
+
+Submissions are evaluated against the hidden test actuals using the **Overall Percentage Error** across all 1,500 test rows:
+
+$$\text{overall\_error\_percentage} = \left( \frac{\sum_{i=1}^{1500} | \text{predicted\_amount}_i - \text{actual\_amount}_i |}{\sum_{i=1}^{1500} \text{actual\_amount}_i} \right) \times 100$$
+
+Points are awarded dynamically based on accuracy:
+
+| Overall Error | Points Awarded | Performance Tier |
+| :--- | :---: | :--- |
+| **≤ 2%** | **1,000** | Exceptional / Near Perfect |
+| **> 2% and ≤ 5%** | **950** | Excellent |
+| **> 5% and ≤ 10%** | **850** | Strong Model |
+| **> 10% and ≤ 15%** | **750** | Good Baseline |
+| **> 15% and ≤ 20%** | **600** | Acceptable |
+| **> 20% and ≤ 30%** | **400** | Moderate |
+| **> 30% and ≤ 50%** | **200** | Weak Baseline |
+| **> 50%** | **0** | Insufficient |
+
+---
+
+### 📜 Important Challenge Rules
+
+1. **Private Ground Truth**: `answer_key.csv` is strictly organizer-only/private on the server and is **NOT available to contestants** (neither in the client workspace nor in the execution sandbox).
+2. **Deterministic Evaluation**: Every run is evaluated consistently against the official 1,500 test records.
+3. **Execution Limits**:
+   - **Timeout**: ~15-second execution timeout.
+   - **Memory**: 512 MB memory.
+   - **CPU**: 0.5 CPU.
+   - **Process Limit**: 64 process limit.
+   - **Output Limit**: 1 MB output limit.
+   - **Network Isolation**: `--network none` isolation.
+4. **Supported ML Libraries**: The sandbox environment comes pre-installed with `numpy`, `pandas`, `scikit-learn`, `scipy`, `xgboost`, `lightgbm`, and `matplotlib`.
+
+---
+
+### 🛠️ Local Development & Testing Instructions
+
+For organizers developing, testing, or updating the challenge:
+
+#### 1. Install Dependencies
+```bash
+pip install -r challenges/printing-press/requirements.txt
+# or install directly:
+pip install numpy pandas scikit-learn scipy matplotlib
+```
+
+#### 2. Run Scorer Unit Tests
+To verify the scoring logic and edge case handlers:
+```bash
+python -m unittest challenges/printing-press/tests/test_scorer.py
+```
+
+#### 3. Challenge Files
+```
+challenges/printing-press/
+├── data/
+│   ├── train.csv         # 7,000-row public training data
+│   ├── test.csv          # 1,500-row public test conditions (no target)
+│   └── answer_key.csv    # Private ground truth for server-side evaluation (organizer-only, not accessible to contestants)
+├── generator.py          # Synthetic dataset generator (organizer use)
+├── src/
+│   └── scorer.py         # Official scoring engine implementation
+├── tests/
+│   └── test_scorer.py    # Unit tests for scorer
+├── benchmark.py          # Baseline models benchmark (Ridge, RF, XGBoost)
+├── DESIGN.md             # Dataset design specification and formulas
+├── BENCHMARK.md          # Baseline model performance documentation
+└── requirements.txt      # Python dependencies
+```
 
 ---
 
