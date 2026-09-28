@@ -2,7 +2,7 @@ import type { Runner } from "@/lib/languageMap";
 
 const EXECUTOR_URL = process.env.EXECUTOR_URL || "http://localhost:4000";
 
-const REQUEST_TIMEOUT_MS = 75_000;
+const REQUEST_TIMEOUT_MS = 310_000;
 
 export interface ExecuteResult {
   stdout: string;

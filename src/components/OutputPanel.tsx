@@ -9,6 +9,7 @@ export interface RunResult {
   status?: string;
   time?: string | null;
   memory?: number | null;
+  image?: string | null;
 }
 
 interface OutputPanelProps {
@@ -72,7 +73,34 @@ export default function OutputPanel({ running, result, stdin, onStdinChange }: O
                 Execution timed out after approximately {result.time ? `${Math.round(Number(result.time))} seconds.` : "15 seconds."}
               </div>
             )}
-            {!result.stdout && !result.stderr && !result.compileStderr && result.status !== "timeout" && (
+
+            {/* Generated Plot Preview (Matplotlib / Seaborn) */}
+            {result.image && (
+              <div className="mt-3 rounded-md border border-white/10 bg-black/30 p-2.5 overflow-hidden">
+                <div className="flex items-center justify-between mb-2 text-[11px] text-neutral-400 font-(family-name:--font-ui)">
+                  <span className="flex items-center gap-1.5 font-medium text-[#4ec9b0]">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M4.5 3a2.5 2.5 0 0 1 5 0v9a1.5 1.5 0 0 1-3 0V5a.5.5 0 0 1 1 0v7a.5.5 0 0 0 1 0V3a1.5 1.5 0 1 0-3 0v9a2.5 2.5 0 0 0 5 0V5a.5.5 0 0 1 1 0v7a3.5 3.5 0 1 1-7 0V3z"/>
+                    </svg>
+                    Plot Output (Matplotlib / Seaborn)
+                  </span>
+                  <a
+                    href={result.image}
+                    download="visualization.png"
+                    className="text-[10px] text-neutral-400 hover:text-white transition-colors underline"
+                  >
+                    Download PNG
+                  </a>
+                </div>
+                <img
+                  src={result.image}
+                  alt="Generated Matplotlib / Seaborn visualization"
+                  className="w-full rounded border border-white/5 object-contain max-h-[280px] bg-[#181818]"
+                />
+              </div>
+            )}
+
+            {!result.stdout && !result.stderr && !result.compileStderr && !result.image && result.status !== "timeout" && (
               <div className="text-neutral-500 font-(family-name:--font-ui)">(no output)</div>
             )}
           </>

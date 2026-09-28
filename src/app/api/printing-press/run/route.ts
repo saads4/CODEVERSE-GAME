@@ -57,18 +57,17 @@ export async function POST(req: NextRequest) {
     const expectedCount = answerKey.length;
 
     // ── Wrapped Python code sent to the executor ────────────────────────────
-    // Contestant code runs as-is; they must load their own CSVs and produce
-    // a `predictions` variable aligned with test.csv row order.
     const wrappedSource = `
 import sys
 import os
 import numpy as np
 
-# ============================================================
-# PRINTING PRESS CONTEST ENVIRONMENT
-# ============================================================
-# Working directory contains: train.csv, test.csv, main.py
-# Load them with pd.read_csv("train.csv") etc.
+# Configure matplotlib for headless environment before contestant code runs
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+except Exception:
+    pass
 
 # ============================================================
 # CONTESTANT CODE
@@ -81,6 +80,39 @@ try:
     )
 except SystemExit:
     pass
+
+# ============================================================
+# VISUALIZATION CAPTURE (Matplotlib / Seaborn)
+# ============================================================
+
+_pp_img_b64 = None
+try:
+    import base64 as _pp_b64
+    import os as _pp_os
+    
+    # 1. Check for explicitly saved PNG files (e.g. visualization.png or any *.png)
+    _pp_pngs = [f for f in _pp_os.listdir(".") if f.endswith(".png")]
+    if _pp_pngs:
+        _pp_target = "visualization.png" if "visualization.png" in _pp_pngs else _pp_pngs[0]
+        with open(_pp_target, "rb") as _f:
+            _pp_img_b64 = _pp_b64.b64encode(_f.read()).decode("ascii")
+    
+    # 2. Check for active unclosed matplotlib figure
+    if not _pp_img_b64:
+        if "matplotlib.pyplot" in sys.modules:
+            _plt = sys.modules["matplotlib.pyplot"]
+            if _plt.get_fignums():
+                import io as _pp_io
+                _buf = _pp_io.BytesIO()
+                _plt.savefig(_buf, format="png", dpi=120, bbox_inches="tight")
+                _buf.seek(0)
+                _pp_img_b64 = _pp_b64.b64encode(_buf.read()).decode("ascii")
+                _plt.close("all")
+except Exception:
+    pass
+
+if _pp_img_b64:
+    print("__PP_IMAGE__:" + _pp_img_b64)
 
 # ============================================================
 # PLATFORM VALIDATION
@@ -135,22 +167,32 @@ print("__PP_PREDS__:" + ",".join(f"{v:.6f}" for v in _pp_predictions))
 
     const result = await executeCode("python", wrappedSource, "");
 
-    // ── Extract the predictions sentinel from stdout ─────────────────────────
-    const SENTINEL = "__PP_PREDS__:";
+    // ── Extract sentinels from stdout ───────────────────────────────────────
+    const PRED_SENTINEL = "__PP_PREDS__:";
+    const IMG_SENTINEL = "__PP_IMAGE__:";
     const stdoutLines = (result.stdout ?? "").split("\n");
-    const predLine = stdoutLines.find((l) => l.startsWith(SENTINEL));
+    const predLine = stdoutLines.find((l) => l.startsWith(PRED_SENTINEL));
+    const imgLine = stdoutLines.find((l) => l.startsWith(IMG_SENTINEL));
+
+    const image = imgLine
+      ? `data:image/png;base64,${imgLine.slice(IMG_SENTINEL.length).trim()}`
+      : undefined;
+
+    const filteredStdout = stdoutLines
+      .filter((l) => !l.startsWith(PRED_SENTINEL) && !l.startsWith(IMG_SENTINEL));
 
     if (!predLine) {
       // Execution failed or predictions weren't produced – return as-is
       return NextResponse.json({
         ...result,
-        stdout: stdoutLines.filter((l) => !l.startsWith(SENTINEL)).join("\n"),
+        stdout: filteredStdout.join("\n").trim(),
+        image,
       });
     }
 
     // Parse predictions
     const predValues = predLine
-      .slice(SENTINEL.length)
+      .slice(PRED_SENTINEL.length)
       .split(",")
       .map((v) => parseFloat(v));
 
@@ -170,7 +212,7 @@ print("__PP_PREDS__:" + ",".join(f"{v:.6f}" for v in _pp_predictions))
 
     // Build clean output for the contestant
     const publicStdout = [
-      ...stdoutLines.filter((l) => !l.startsWith(SENTINEL)),
+      ...filteredStdout,
       `Validation Error: ${errorPct.toFixed(2)}%`,
       `Points: ${points}`,
     ]
@@ -181,6 +223,7 @@ print("__PP_PREDS__:" + ",".join(f"{v:.6f}" for v in _pp_predictions))
       ...result,
       stdout: publicStdout,
       stderr: result.stderr ?? "",
+      image,
     });
   } catch (error) {
     return NextResponse.json(

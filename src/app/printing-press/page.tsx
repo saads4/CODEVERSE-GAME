@@ -18,14 +18,6 @@ function TrafficLights() {
   );
 }
 
-function IconFile({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      <path d="M9 1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6l-5-5zm0 1.5 3.5 3.5H9V2.5zM4 14a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4v4h4v7a1 1 0 0 1-1 1H4z" />
-    </svg>
-  );
-}
-
 function IconChevron({ open, className }: { open: boolean; className?: string }) {
   return (
     <svg
@@ -58,41 +50,44 @@ function IconPython({ className }: { className?: string }) {
   );
 }
 
-// ── Starter code ─────────────────────────────────────────────────────────────
+// ── Starter Code ─────────────────────────────────────────────────────────────
 
-const STARTER_CODE = `import pandas as pd
+const CODE_MAIN = `import pandas as pd
 import numpy as np
 
 # ── Printing Press ML Challenge ──────────────────────────────
-# Load the datasets (they're in your working directory)
+# Datasets are available directly in your working directory:
 train_df = pd.read_csv("train.csv")
 test_df  = pd.read_csv("test.csv")
 
-# train_df has features + target column 'amount_printed'
-# test_df  has the same features but NO 'amount_printed'
-
 # ── Instructions ────────────────────────────────────────────
-# 1. Explore and preprocess the features
-# 2. Train your model on train_df
-# 3. Predict amount_printed for every row in test_df
-# 4. Assign your predictions to the variable 'predictions'
-#    It must be a 1-D array/list with exactly len(test_df) values
+# 1. Preprocess train_df features & target ('amount_printed')
+# 2. Train your ML regression model
+# 3. Generate predictions for test_df
+# 4. Assign predictions to 'predictions' (len == 1500)
+#
+# (Optional) You can also use matplotlib.pyplot or seaborn
+# to plot and save figures with plt.savefig("visualization.png")
 #
 # predictions = ...
 
-# ── Your code below ─────────────────────────────────────────
+# ── Your model below ─────────────────────────────────────────
 
 predictions = ...
 `;
 
 // ── File tree ─────────────────────────────────────────────────────────────────
 
-type FileEntry = { name: string; readOnly?: boolean };
+type FileEntry = {
+  name: string;
+  readOnly?: boolean;
+  category?: string;
+};
 
 const FILES: FileEntry[] = [
+  { name: "main.py" },
   { name: "train.csv", readOnly: true },
   { name: "test.csv", readOnly: true },
-  { name: "main.py" },
 ];
 
 function FileTree({
@@ -105,10 +100,11 @@ function FileTree({
   const [open, setOpen] = useState(true);
 
   return (
-    <aside className="w-[210px] shrink-0 bg-(--surface-sidebar) border-r border-(--border-hairline) flex flex-col text-[12.5px] select-none overflow-y-auto">
+    <aside className="w-[220px] shrink-0 bg-(--surface-sidebar) border-r border-(--border-hairline) flex flex-col text-[12.5px] select-none overflow-y-auto">
       {/* Explorer header */}
-      <div className="h-8 px-3 flex items-center text-[10px] font-bold uppercase tracking-widest text-(--text-tertiary)">
-        Explorer
+      <div className="h-8 px-3 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-(--text-tertiary)">
+        <span>Explorer</span>
+        <span className="text-[9px] font-normal text-[#4ec9b0] normal-case">Python + Plots</span>
       </div>
 
       {/* Project folder */}
@@ -123,7 +119,7 @@ function FileTree({
       </button>
 
       {open && (
-        <ul className="pl-3">
+        <ul className="pl-3 mt-1 space-y-0.5">
           {FILES.map((f) => {
             const isActive = selected === f.name;
             const isCsv = f.name.endsWith(".csv");
@@ -133,7 +129,7 @@ function FileTree({
                   onClick={() => onSelect(f.name)}
                   className={`flex items-center gap-2 w-full px-2 py-[3px] rounded-sm text-left truncate transition-colors
                     ${isActive
-                      ? "bg-(--accent-run)/15 text-(--text-primary)"
+                      ? "bg-(--accent-run)/15 text-(--text-primary) font-medium"
                       : "text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)"
                     }`}
                 >
@@ -162,17 +158,28 @@ function FileTree({
 
 export default function PrintingPressPage() {
   const [selectedFile, setSelectedFile] = useState("main.py");
-  const [code, setCode] = useState(STARTER_CODE);
+  const [fileContents, setFileContents] = useState<Record<string, string>>({
+    "main.py": CODE_MAIN,
+  });
+
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
 
-  // CSV files are read-only previews; only main.py is editable
-  const isReadOnly = selectedFile !== "main.py";
+  const isReadOnly = selectedFile.endsWith(".csv");
 
-  // For CSV files we show a placeholder in the editor
+  const currentCode = fileContents[selectedFile] ?? "";
+
+  const updateCurrentCode = (newCode: string) => {
+    if (isReadOnly) return;
+    setFileContents((prev) => ({
+      ...prev,
+      [selectedFile]: newCode,
+    }));
+  };
+
   const editorValue = isReadOnly
-    ? `# ${selectedFile} is a read-only data file.\n# Load it in main.py with:\nimport pandas as pd\ndf = pd.read_csv("${selectedFile}")`
-    : code;
+    ? `# ${selectedFile} is a read-only competition dataset.\n# Load it in your code with:\nimport pandas as pd\ndf = pd.read_csv("${selectedFile}")\n\n# Features: printing_speed, machine_age, operating_hours, temperature,\n# humidity, power_stability, setup_time, paper_type, shift,\n# maintenance_status, machine_type, paper_quality, operator_id, etc.`
+    : currentCode;
 
   const runCode = async () => {
     if (isReadOnly) return;
@@ -183,7 +190,7 @@ export default function PrintingPressPage() {
       const response = await fetch("/api/printing-press/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: code }),
+        body: JSON.stringify({ content: currentCode }),
       });
 
       const data = await response.json();
@@ -233,11 +240,11 @@ export default function PrintingPressPage() {
           </span>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-2">
           <button
             onClick={runCode}
             disabled={running || isReadOnly}
-            title={isReadOnly ? "Switch to main.py to run your model" : "Run model"}
+            title={isReadOnly ? "Select a Python file to execute" : "Run file"}
             className="flex items-center gap-1.5 bg-(--accent-run) hover:bg-(--accent-run-hover) disabled:bg-black/[.06] disabled:dark:bg-white/[.08] disabled:text-(--text-tertiary) text-white text-[12.5px] font-medium h-7 px-3 rounded-md transition-colors"
           >
             <IconPlay className="w-3 h-3" />
@@ -273,12 +280,12 @@ export default function PrintingPressPage() {
           <Editor
             filename={selectedFile}
             value={editorValue}
-            onChange={isReadOnly ? () => {} : setCode}
+            onChange={isReadOnly ? () => {} : updateCurrentCode}
           />
         </section>
 
         {/* Output panel */}
-        <section className="w-[420px] shrink-0 border-l border-(--border-hairline) flex flex-col min-h-0">
+        <section className="w-[440px] shrink-0 border-l border-(--border-hairline) flex flex-col min-h-0">
           <OutputPanel
             running={running}
             result={result}

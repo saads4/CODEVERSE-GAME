@@ -13,8 +13,8 @@ const WORKSPACES_ROOT = path.resolve(
   process.env.WORKSPACES_ROOT || path.join(__dirname, "../workspaces")
 );
 const TERMINAL_AUTH_SECRET = process.env.TERMINAL_AUTH_SECRET || "";
-const TIMEOUT_MS = Number(process.env.EXECUTION_TIMEOUT_MS || 60000);
-const MAX_OUTPUT_BYTES = 1024 * 1024; // 1MB
+const TIMEOUT_MS = Number(process.env.EXECUTION_TIMEOUT_MS || 300000);
+const MAX_OUTPUT_BYTES = 2 * 1024 * 1024; // 2MB
 const MAX_ACTIVE_SESSIONS = 50;
 const SESSION_RECONNECT_GRACE_MS = 45000;
 const LANGUAGES = new Set(["python", "c", "cpp", "javascript", "jsx", "tsx"]);
@@ -34,9 +34,8 @@ function copyPpDatasets(workspaceDir) {
   for (const [src, name] of [[PP_TRAIN_SRC, "train.csv"], [PP_TEST_SRC, "test.csv"]]) {
     if (!fs.existsSync(src)) continue;
     const dest = path.join(workspaceDir, name);
-    if (!fs.existsSync(dest)) {
-      try { fs.copyFileSync(src, dest); } catch { /* ignore */ }
-    }
+    // Always overwrite so regenerated CSVs (e.g. without the id column) stay fresh
+    try { fs.copyFileSync(src, dest); } catch { /* ignore */ }
   }
 }
 
@@ -75,6 +74,28 @@ function getWorkspaceDir(projectId) {
   return targetDir;
 }
 
+function killProcessTree(pid) {
+  if (!pid) return;
+  if (process.platform === "win32") {
+    try {
+      const { execSync } = require("node:child_process");
+      execSync(`taskkill /pid ${pid} /T /F`, { stdio: "ignore" });
+    } catch {
+      // Process may already be dead
+    }
+  } else {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Ignore
+      }
+    }
+  }
+}
+
 function getSanitizedEnv(workspaceDir) {
   const allowedKeys = [
     "PATH",
@@ -100,6 +121,11 @@ function getSanitizedEnv(workspaceDir) {
     "PROGRAMFILES",
     "PROGRAMFILES(X86)",
     "COMMONPROGRAMFILES",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "PROCESSOR_IDENTIFIER",
+    "PROCESSOR_LEVEL",
+    "PROCESSOR_REVISION",
   ];
 
   const cleanEnv = {};
@@ -112,6 +138,25 @@ function getSanitizedEnv(workspaceDir) {
   cleanEnv.TERM = "xterm-256color";
   cleanEnv.COLORTERM = "truecolor";
   cleanEnv.WORKSPACE_DIR = workspaceDir;
+  cleanEnv.PYTHONUNBUFFERED = "1";
+  cleanEnv.MPLBACKEND = "Agg"; // prevent Matplotlib from trying to open a display
+
+  // ── Thread-pool caps ────────────────────────────────────────────────────────
+  // Without explicit caps, OpenMP (sklearn) and OpenBLAS (numpy) default to the
+  // full logical CPU count (16 on this machine). A 500-tree RandomForest with
+  // n_jobs=1 still triggers OpenMP internally per-tree; 500 × 16 threads =
+  // severe oversubscription on Windows (vcomp140.dll) making it 5-10× slower
+  // than single-threaded. Cap at 4 for a safe, well-parallelised sandbox.
+  const THREAD_CAP = process.env.SANDBOX_THREAD_CAP || "4";
+  cleanEnv.OMP_NUM_THREADS        = THREAD_CAP;
+  cleanEnv.OPENBLAS_NUM_THREADS   = THREAD_CAP;
+  cleanEnv.MKL_NUM_THREADS        = THREAD_CAP;
+  cleanEnv.NUMEXPR_NUM_THREADS    = THREAD_CAP;
+  cleanEnv.VECLIB_MAXIMUM_THREADS = THREAD_CAP;
+  cleanEnv.BLIS_NUM_THREADS       = THREAD_CAP;
+  // Also tell Python's threadpoolctl/joblib about the limit
+  cleanEnv.LOKY_MAX_CPU_COUNT     = THREAD_CAP;
+
   if (process.platform !== "win32") {
     cleanEnv.PWD = workspaceDir;
   }
@@ -280,7 +325,7 @@ async function execute(language, source, stdin = "", projectId = null) {
   const collect = (target) => (chunk) => {
     if (stdout.length + stderr.length + chunk.length > MAX_OUTPUT_BYTES) {
       outputLimitReached = true;
-      child.kill("SIGKILL");
+      killProcessTree(child.pid);
       return;
     }
     if (target === "stdout") stdout += chunk.toString();
@@ -297,24 +342,55 @@ async function execute(language, source, stdin = "", projectId = null) {
 
   const result = await new Promise((resolve) => {
     let timedOut = false;
+    let resolved = false;
+    let exitCode = null;
+    let exitFallbackTimer = null;
+
+    const finish = (res) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      if (exitFallbackTimer) clearTimeout(exitFallbackTimer);
+      resolve(res);
+    };
+
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      killProcessTree(child.pid);
+      setTimeout(() => {
+        finish({ timedOut: true, code: 124 });
+      }, 500);
     }, TIMEOUT_MS);
 
     child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({ error, timedOut, code: null });
+      finish({ error, timedOut, code: null });
+    });
+
+    child.on("exit", (code) => {
+      exitCode = code;
+      // If stdio close event hasn't fired in 250ms, destroy streams and finish
+      exitFallbackTimer = setTimeout(() => {
+        try { child.stdout?.destroy(); } catch {}
+        try { child.stderr?.destroy(); } catch {}
+        finish({ timedOut: false, code: exitCode ?? 0 });
+      }, 250);
     });
 
     child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ timedOut, code });
+      finish({ timedOut, code: code ?? exitCode });
     });
   });
 
   if (!projectId) {
-    await fsp.rm(workspaceDir, { recursive: true, force: true }).catch(() => {});
+    try {
+      await fsp.rm(workspaceDir, { recursive: true, force: true });
+    } catch {
+      setTimeout(async () => {
+        try {
+          await fsp.rm(workspaceDir, { recursive: true, force: true });
+        } catch {}
+      }, 500);
+    }
   }
 
   const elapsedSeconds = Number(process.hrtime.bigint() - started) / 1e9;
