@@ -44,8 +44,8 @@ next-env.d.ts
 __pycache__
 
 # private challenge answer key
-challenges/printing-press/data/answer_key.csv
-**/answer_key.csv
+# answer_key.csv is intentionally committed to support Vercel deployment
+# **/answer_key.csv
 
 # local user terminal workspaces
 /workspaces

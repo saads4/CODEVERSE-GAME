@@ -7,28 +7,11 @@ import path from "node:path";
 export const maxDuration = 300;
 
 async function loadAnswerKey(): Promise<{ id: string; amount_printed: number }[]> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  let raw: string;
-
-  if (process.env.NODE_ENV !== "production" && (!supabaseUrl || !serviceRoleKey)) {
-    const localPath = path.resolve(
-      process.cwd(),
-      "challenges/printing-press/data/answer_key.csv"
-    );
-    raw = await fs.readFile(localPath, "utf8");
-  } else {
-    if (!supabaseUrl || !serviceRoleKey) {
-      throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-    }
-
-    const storage = createClient(supabaseUrl, serviceRoleKey).storage;
-    const { data, error } = await storage
-      .from(process.env.PRINTING_PRESS_ANSWER_KEY_BUCKET || "challenge-private")
-      .download(process.env.PRINTING_PRESS_ANSWER_KEY_PATH || "printing-press/answer_key.csv");
-    if (error) throw new Error(`Unable to download challenge answer key: ${error.message}`);
-    raw = await data.text();
-  }
+  const localPath = path.resolve(
+    process.cwd(),
+    "challenges/printing-press/data/answer_key.csv"
+  );
+  const raw = await fs.readFile(localPath, "utf8");
 
   const lines = raw.trim().split(/\r?\n/);
   const headers = lines[0].split(",").map((h) => h.trim());
