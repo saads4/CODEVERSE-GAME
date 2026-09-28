@@ -19,6 +19,7 @@
   - [Environment Configuration](#environment-configuration)
   - [Running the Services](#running-the-services)
   - [Automated Verification Tests](#automated-verification-tests)
+- [Deploying to Vercel](#-deploying-to-vercel)
 - [Security & Process Sandboxing](#-security--process-sandboxing)
 - [Keyboard Shortcuts](#-keyboard-shortcuts)
 - [Troubleshooting](#-troubleshooting)
@@ -258,6 +259,26 @@ Verify all system capabilities (health check, Python ML execution, WebSocket int
 ```bash
 npm test
 ```
+
+## ☁️ Deploying to Vercel
+
+Vercel hosts the Next.js app and its HTTP routes. The interactive terminal and code execution service in `server/` must run separately on a persistent Node.js host that supports WebSockets, `node-pty`, Python, and any other language runtimes you enable. Do not point production settings at `localhost`.
+
+1. Create a Supabase project and run `supabase/schema.sql` in its SQL editor. In Storage, create a **private** bucket named `challenge-private` and upload the local `challenges/printing-press/data/answer_key.csv` to `printing-press/answer_key.csv`. This file is intentionally excluded from Git; do not make the bucket public.
+2. Deploy `server/` on a persistent host. Set its runtime dependencies and language runtimes, expose HTTPS and WebSocket traffic, and confirm `/health` responds with `{ "ok": true }`. Configure the host's firewall and access controls; the execution service runs submitted code and must not be treated as a trusted public API.
+3. Import this repository into Vercel. Add these project environment variables for **Production** (and Preview if needed):
+
+   - `NEXT_PUBLIC_SUPABASE_URL`: Supabase project URL.
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Supabase publishable/anon key.
+   - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service-role key. Keep this server-only; never use a `NEXT_PUBLIC_` prefix.
+   - `EXECUTOR_URL`: HTTPS base URL of the execution service, without a trailing slash.
+   - `NEXT_PUBLIC_EXECUTOR_URL`: the same HTTPS base URL, used for workspace synchronization in the browser.
+   - `NEXT_PUBLIC_TERMINAL_WS_URL`: `wss://` URL of the terminal endpoint, for example `wss://executor.example.com/terminal`.
+   - `PRINTING_PRESS_ANSWER_KEY_BUCKET` and `PRINTING_PRESS_ANSWER_KEY_PATH`: optional; defaults are `challenge-private` and `printing-press/answer_key.csv`.
+
+4. Deploy using Vercel's default install and build commands (`npm install` and `npm run build`). The execution API routes request up to 300 seconds; the Vercel plan must permit that function duration for long-running jobs. Redeploy after changing environment variables.
+
+Local `.env.local` values are examples only. Replace all placeholder URLs and keys before deploying. Without Supabase credentials the project routes cannot start; without the external execution service, run and terminal features will fail even though the site itself builds.
 
 ---
 

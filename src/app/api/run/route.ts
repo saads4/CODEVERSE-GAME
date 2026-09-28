@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { executeCode } from "@/lib/executor";
 import { getLangConfig } from "@/lib/languageMap";
 
+export const maxDuration = 300;
+
 export async function POST(req: NextRequest) {
   const { filename, content, stdin, projectId } = await req.json();
 

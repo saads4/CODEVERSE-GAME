@@ -12,9 +12,10 @@ export default function MissionBriefingModal({ isOpen, onClose }: MissionBriefin
   const [hasAcknowledged, setHasAcknowledged] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      heistAudio.play("missionStart");
-    }
+    if (!isOpen) return;
+
+    heistAudio.play("missionStart");
+    return () => heistAudio.stop("missionStart");
   }, [isOpen]);
 
   if (!isOpen) return null;

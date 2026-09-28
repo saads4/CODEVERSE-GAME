@@ -122,6 +122,15 @@ class HeistAudioManager {
       // Audio not supported or failed to load
     }
   }
+
+  public stop(key: keyof SoundConfig) {
+    const path = this.config[key];
+    const audio = this.audioCache.get(path);
+    if (!audio) return;
+
+    audio.pause();
+    audio.currentTime = 0;
+  }
 }
 
 export const heistAudio = new HeistAudioManager();

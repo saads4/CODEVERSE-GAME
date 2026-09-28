@@ -1,16 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeCode } from "@/lib/executor";
-import fs from "fs";
-import path from "path";
+import { createClient } from "@supabase/supabase-js";
+import fs from "node:fs/promises";
+import path from "node:path";
 
-// ── Server-side answer key (Private ground truth) ───────────────────────────
-const ANSWER_KEY_PATH = path.resolve(
-  process.cwd(),
-  "challenges/printing-press/data/answer_key.csv"
-);
+export const maxDuration = 300;
 
-function loadAnswerKey(): { id: string; amount_printed: number }[] {
-  const raw = fs.readFileSync(ANSWER_KEY_PATH, "utf8");
+async function loadAnswerKey(): Promise<{ id: string; amount_printed: number }[]> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let raw: string;
+
+  if (process.env.NODE_ENV !== "production" && (!supabaseUrl || !serviceRoleKey)) {
+    const localPath = path.resolve(
+      process.cwd(),
+      "challenges/printing-press/data/answer_key.csv"
+    );
+    raw = await fs.readFile(localPath, "utf8");
+  } else {
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+    }
+
+    const storage = createClient(supabaseUrl, serviceRoleKey).storage;
+    const { data, error } = await storage
+      .from(process.env.PRINTING_PRESS_ANSWER_KEY_BUCKET || "challenge-private")
+      .download(process.env.PRINTING_PRESS_ANSWER_KEY_PATH || "printing-press/answer_key.csv");
+    if (error) throw new Error(`Unable to download challenge answer key: ${error.message}`);
+    raw = await data.text();
+  }
+
   const lines = raw.trim().split(/\r?\n/);
   const headers = lines[0].split(",").map((h) => h.trim());
   const idIdx = headers.indexOf("id");
@@ -67,7 +86,7 @@ export async function POST(req: NextRequest) {
     // 1. Load answer key for post-execution validation
     let answerKey: { id: string; amount_printed: number }[];
     try {
-      answerKey = loadAnswerKey();
+      answerKey = await loadAnswerKey();
     } catch (e) {
       console.error("Failed to load answer_key.csv:", e);
       return NextResponse.json({ error: "Challenge answer key unavailable" }, { status: 500 });
@@ -402,4 +421,4 @@ print("\\n__PP_VAL__:" + json.dumps(_pp_val_payload))
       { status: 500 }
     );
   }
-}
+}
